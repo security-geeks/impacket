@@ -1,20 +1,25 @@
 #!/usr/bin/env python
-# SECUREAUTH LABS. Copyright 2018 SecureAuth Corporation. All rights reserved.
+# Impacket - Collection of Python classes for working with network protocols.
 #
-# This software is provided under under a slightly modified version
+# Copyright Fortra, LLC and its affiliated companies 
+#
+# All rights reserved.
+#
+# This software is provided under a slightly modified version
 # of the Apache Software License. See the accompanying LICENSE file
 # for more information.
 #
-# Description: DCE/RPC SAMR dumper.
+# Description:
+#   DCE/RPC SAMR dumper.
 #
 # Author:
-#  Javier Kohen <jkohen@coresecurity.com>
-#  Alberto Solino (@agsolino)
+#   Javier Kohen
+#   Alberto Solino (@agsolino)
 #
 # Reference for:
-#  DCE/RPC for SAMR
-from __future__ import division
-from __future__ import print_function
+#   DCE/RPC for SAMR
+#
+
 import sys
 import logging
 import argparse
@@ -22,10 +27,12 @@ import codecs
 
 from datetime import datetime
 from impacket.examples import logger
+from impacket.examples.utils import parse_target
 from impacket import version
 from impacket.nt_errors import STATUS_MORE_ENTRIES
 from impacket.dcerpc.v5 import transport, samr
 from impacket.dcerpc.v5.rpcrt import DCERPCException
+from impacket import wintime
 
 class ListUsersException(Exception):
     pass
@@ -47,12 +54,6 @@ class SAMRDump:
 
         if hashes is not None:
             self.__lmhash, self.__nthash = hashes.split(':')
-
-    @staticmethod
-    def getUnixTime(t):
-        t -= 116444736000000000
-        t /= 10000000
-        return t
 
     def dump(self, remoteName, remoteHost):
         """Dumps the list of users and shares registered present at
@@ -83,7 +84,7 @@ class SAMRDump:
         # Display results.
 
         if self.__csvOutput is True:
-            print('#Name,RID,FullName,PrimaryGroupId,BadPasswordCount,LogonCount,PasswordLastSet,PasswordDoesNotExpire,AccountIsDisabled,UserComment,ScriptPath')
+            print('#Name,RID,FullName,PrimaryGroupId,BadPasswordCount,LogonCount,PasswordLastSet,PasswordDoesNotExpire,AccountIsDisabled,AdminComment,UserComment,ScriptPath')
 
         for entry in entries:
             (username, uid, user) = entry
@@ -91,7 +92,7 @@ class SAMRDump:
             if pwdLastSet == 0:
                 pwdLastSet = '<never>'
             else:
-                pwdLastSet = str(datetime.fromtimestamp(self.getUnixTime(pwdLastSet)))
+                pwdLastSet = str(wintime.filetime_to_datetime(pwdLastSet))
 
             if user['UserAccountControl'] & samr.USER_DONT_EXPIRE_PASSWORD:
                 dontExpire = 'True'
@@ -104,13 +105,14 @@ class SAMRDump:
                 accountDisabled = 'False'
 
             if self.__csvOutput is True:
-                print('%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s' % (username, uid, user['FullName'], user['PrimaryGroupId'],
+                print('%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s' % (username, uid, user['FullName'], user['PrimaryGroupId'],
                                                       user['BadPasswordCount'], user['LogonCount'],pwdLastSet,
-                                                      dontExpire, accountDisabled, user['UserComment'].replace(',','.'),
+                                                      dontExpire, accountDisabled, user['UserComment'].replace(',','.'),user['AdminComment'].replace(',','.'),
                                                       user['ScriptPath']  ))
             else:
                 base = "%s (%d)" % (username, uid)
                 print(base + '/FullName:', user['FullName'])
+                print(base + '/AdminComment:', user['AdminComment'])
                 print(base + '/UserComment:', user['UserComment'])
                 print(base + '/PrimaryGroupId:', user['PrimaryGroupId'])
                 print(base + '/BadPasswordCount:', user['BadPasswordCount'])
@@ -228,25 +230,10 @@ if __name__ == '__main__':
     options = parser.parse_args()
 
     # Init the example's logger theme
-    logger.init(options.ts)
+    logger.init(options.ts, options.debug)
 
-    if options.debug is True:
-        logging.getLogger().setLevel(logging.DEBUG)
-        # Print the Library's installation path
-        logging.debug(version.getInstallationPath())
-    else:
-        logging.getLogger().setLevel(logging.INFO)
+    domain, username, password, remoteName = parse_target(options.target)
 
-    import re
-
-    domain, username, password, remoteName = re.compile('(?:(?:([^/@:]*)/)?([^@:]*)(?::([^@]*))?@)?(.*)').match(
-        options.target).groups('')
-
-    #In case the password contains '@'
-    if '@' in remoteName:
-        password = password + '@' + remoteName.rpartition('@')[0]
-        remoteName = remoteName.rpartition('@')[2]
-        
     if domain is None:
         domain = ''
 
